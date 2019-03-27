@@ -151,7 +151,8 @@ class TurnAndFind(State):
         if CURRENT_STATE == "turn" and len(msg.markers) > 0:
             msg = msg.markers[0]
 
-            if msg.id not in TAGS_FOUND:
+            # if msg.id not in TAGS_FOUND:
+            if True:
                 TAGS_FOUND.append(msg.id)
                 TAG_POSE = msg.pose.pose
                 self.marker_detected = True
@@ -232,7 +233,7 @@ class MoveCloser(State):
         self.current_marker = None
         self.tag_pose_base = None
         self.distance_from_marker = 0.2
-
+        self.ACAP = ACAP
         self.listener = tf.TransformListener()
 
     def execute(self, userdata):
@@ -253,18 +254,16 @@ class MoveCloser(State):
             elif self.tag_pose_base is not None and self.tag_pose_base.position.x > 0.5:
                 move_cmd = Twist()
 
-                print self.tag_pose_base.position
-
-                if self.tag_pose_base.position.z > 0.6:  # goal too far
+                if self.tag_pose_base.position.x > 0.6:  # goal too far
                     move_cmd.linear.x += 0.1
-                elif self.tag_pose_base.position.z > 0.5:  # goal too close
+                elif self.tag_pose_base.position.x > 0.5:  # goal too close
                     move_cmd.linear.x -= 0.1
                 else:
                     move_cmd.linear.x = 0
 
-                if self.tag_pose_base.position.x < 1e-3:  # goal to the left
+                if self.tag_pose_base.position.y < 1e-3:  # goal to the left
                     move_cmd.angular.z -= 0.1
-                elif self.tag_pose_base.position.x > -1e-3:  # goal to the right
+                elif self.tag_pose_base.position.y > -1e-3:  # goal to the right
                     move_cmd.angular.z += 0.1
                 else:
                     move_cmd.angular.z = 0
@@ -279,6 +278,7 @@ class MoveCloser(State):
                 self.vel_pub.publish(move_cmd)
             self.rate.sleep()
 
+        print("marker!!!:", self.current_marker)
         pose = PointStamped()
         pose.header.frame_id = "ar_marker_" + str(self.current_marker)
         pose.header.stamp = rospy.Time(0)
@@ -292,7 +292,7 @@ class MoveCloser(State):
 
         pose_transformed = self.listener.transformPoint("odom", pose)
 
-        if ACAP:
+        if self.ACAP:
             goal = MoveBaseGoal()
             goal.target_pose.header.frame_id = "odom"
             goal.target_pose.pose.position.x = pose_transformed.point.x
@@ -343,7 +343,7 @@ if __name__ == "__main__":
         StateMachine.add("GetCloseToAR", MoveCloser(), transitions={
                          "close_enough": "GoToBackwardMiddle"})
 
-        StateMachine.add("GoToBackwardMiddle", MoveBaseGo(-1, 0, math.pi/2, "base_link"),
+        StateMachine.add("GoToBackwardMiddle", MoveBaseGo(-1, 0, -math.pi/2, "base_link"),
                          transitions={"done": "FindBox"})
 
         StateMachine.add("FindBox", TurnAndFind(), transitions={
