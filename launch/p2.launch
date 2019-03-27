@@ -108,7 +108,7 @@
         <remap from="ar_pose_marker" to="ar_pose_marker_base"/>
     </node>
 
-    <node pkg="demo6" type="main.py" name="demo6" output="screen">
+    <node pkg="demo7" type="demo7.py" name="demo7" output="screen">
         <remap from="cmd_vel" to="$(arg velocity_topic)"/>
     </node>
 
