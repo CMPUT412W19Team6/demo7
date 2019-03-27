@@ -39,6 +39,10 @@ END_GOAL = None
 MARKER_POSE = None
 START = True
 
+isToTheLeft = False
+
+POINT_BEHIND_TRANS = None
+
 
 class Turn(State):
     """
@@ -64,6 +68,7 @@ class Turn(State):
         self.tb_rot = angles
 
     def execute(self, userdata):
+        global isToTheLeft
         turn_direction = 1
 
         start_pose = [0, 0, 0, 0]
@@ -81,6 +86,12 @@ class Turn(State):
             goal = start_pose[1] + 2*np.pi/3 * turn_direction
         elif self.angle == 135:
             goal = start_pose[1] + 150*np.pi/180 * turn_direction
+
+        elif self.angle == 999:
+            if isToTheLeft:
+                goal = start_pose[1] + np.pi/2 * turn_direction
+            else:
+                goal = start_pose[1] - np.pi/2 * turn_direction
 
         goal = angles_lib.normalize_angle(goal)
 
@@ -125,10 +136,12 @@ class TurnAndFind(State):
             'ar_pose_marker_base', AlvarMarkers, self.marker_callback)
         self.marker_detected = False
         self.rate = rospy.Rate(30)
+        self.count = 0
 
     def execute(self, userdata):
         global CURRENT_STATE, TAGS_FOUND
         CURRENT_STATE = "turn"
+        self.count = 0
 
         self.marker_detected = False
         while not self.marker_detected:
@@ -150,12 +163,71 @@ class TurnAndFind(State):
 
         if CURRENT_STATE == "turn" and len(msg.markers) > 0:
             msg = msg.markers[0]
+            self.count += 1
 
             # if msg.id not in TAGS_FOUND:
-            if True:
+            if self.count > 1:
                 TAGS_FOUND.append(msg.id)
                 TAG_POSE = msg.pose.pose
                 self.marker_detected = True
+
+
+def calc_delta_vector(start_heading, distance):
+    dx = distance * np.cos(start_heading)
+    dy = distance * np.sin(start_heading)
+    return np.array([dx, dy])
+
+
+def check_forward_distance(forward_vec, start_pos, current_pos):
+    current = current_pos - start_pos
+    # vector projection (project current onto forward_vec)
+    delta = np.dot(current, forward_vec) / \
+        np.dot(forward_vec, forward_vec) * forward_vec
+    dist = np.sqrt(delta.dot(delta))
+    return dist
+
+
+class Translate(State):
+    def __init__(self, distance=0.15, linear=-0.2):
+        State.__init__(self, outcomes=["done"])
+        self.tb_position = None
+        self.tb_rot = [0, 0, 0, 0]
+        self.distance = distance
+        self.COLLISION = False
+        self.linear = linear
+
+        # pub / sub
+        self.cmd_pub = rospy.Publisher(
+            "cmd_vel", Twist, queue_size=1)
+        rospy.Subscriber("odom", Odometry, callback=self.odom_callback)
+
+    def odom_callback(self, msg):
+        tb_pose = msg.pose.pose
+        __, __, angles, position, __ = decompose_matrix(numpify(tb_pose))
+        self.tb_position = position[0:2]
+        self.tb_rot = angles
+
+    def execute(self, userdata):
+        global turn_direction
+        global START
+        if not START:
+            return 'quit'
+        self.COLLISION = False
+        start_heading = self.tb_rot[2]
+        start_pos = self.tb_position
+        forward_vec = calc_delta_vector(start_heading, self.distance)
+        rate = rospy.Rate(30)
+
+        while not rospy.is_shutdown():
+            dist = check_forward_distance(
+                forward_vec, start_pos, self.tb_position)
+            if dist > self.distance:
+                return "done"
+
+            msg = Twist()
+            msg.linear.x = self.linear
+            self.cmd_pub.publish(msg)
+            rate.sleep()
 
 
 class MoveBehind(State):
@@ -166,24 +238,25 @@ class MoveBehind(State):
         self.listener = tf.TransformListener()
 
     def execute(self, userdata):
-        global TAG_POSE, TAGS_FOUND
+        global TAG_POSE, TAGS_FOUND, isToTheLeft, POINT_BEHIND_TRANS
 
-        point_behind = PointStamped()
-        point_behind.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
-        point_behind.header.stamp = rospy.Time(0)
-        point_behind.point.z = -1
+        # point_behind = PointStamped()
+        # point_behind.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
+        # point_behind.header.stamp = rospy.Time(0)
+        # point_behind.point.z = -0.2
+        # point_behind.point.x = delta_x
 
-        self.listener.waitForTransform(
-            "odom", point_behind.header.frame_id, rospy.Time(0), rospy.Duration(4))
-        point_behind_transformed = self.listener.transformPoint(
-            "odom", point_behind)
+        # self.listener.waitForTransform(
+        #     "odom", point_behind.header.frame_id, rospy.Time(0), rospy.Duration(4))
+        # point_behind_transformed = self.listener.transformPoint(
+        #     "odom", point_behind)
 
         quaternion = quaternion_from_euler(0, 0, 0)
         goal = MoveBaseGoal()
         goal.target_pose.header.frame_id = "odom"
-        goal.target_pose.pose.position.x = point_behind_transformed.point.x
-        goal.target_pose.pose.position.y = point_behind_transformed.point.y
-        goal.target_pose.pose.position.z = point_behind_transformed.point.z
+        goal.target_pose.pose.position.x = POINT_BEHIND_TRANS.point.x
+        goal.target_pose.pose.position.y = POINT_BEHIND_TRANS.point.y
+        goal.target_pose.pose.position.z = POINT_BEHIND_TRANS.point.z
         goal.target_pose.pose.orientation.x = quaternion[0]
         goal.target_pose.pose.orientation.y = quaternion[1]
         goal.target_pose.pose.orientation.z = quaternion[2]
@@ -193,7 +266,7 @@ class MoveBehind(State):
 
 
 class MoveBaseGo(State):
-    def __init__(self, distance=0, horizontal=0, yaw=0, frame="base_footprint"):
+    def __init__(self, distance=0, horizontal=0, yaw=0, frame="base_link", isNotPushing=0):
         State.__init__(self, outcomes=["done"])
         self.distance = distance
         self.horizontal = horizontal
@@ -202,23 +275,140 @@ class MoveBaseGo(State):
         self.move_base_client = actionlib.SimpleActionClient(
             "move_base", MoveBaseAction)
 
+        self.isNotPushing = isNotPushing
+
     def execute(self, userdata):
+        global CURRENT_POSE, START, END_GOAL
+
         if START and not rospy.is_shutdown():
 
-            quaternion = quaternion_from_euler(0, 0, self.yaw)
+            if self.isNotPushing == 0:
+                quaternion = quaternion_from_euler(0, 0, self.yaw)
 
-            goal = MoveBaseGoal()
-            goal.target_pose.header.frame_id = self.frame
-            goal.target_pose.pose.position.x = self.distance
-            goal.target_pose.pose.position.y = self.horizontal
-            goal.target_pose.pose.orientation.x = quaternion[0]
-            goal.target_pose.pose.orientation.y = quaternion[1]
-            goal.target_pose.pose.orientation.z = quaternion[2]
-            goal.target_pose.pose.orientation.w = quaternion[3]
+                goal = MoveBaseGoal()
+                goal.target_pose.header.frame_id = self.frame
+                goal.target_pose.pose.position.x = self.distance
+                goal.target_pose.pose.position.y = self.horizontal
+                goal.target_pose.pose.orientation.x = quaternion[0]
+                goal.target_pose.pose.orientation.y = quaternion[1]
+                goal.target_pose.pose.orientation.z = quaternion[2]
+                goal.target_pose.pose.orientation.w = quaternion[3]
 
-            self.move_base_client.send_goal_and_wait(goal)
+                self.move_base_client.send_goal_and_wait(goal)
+            elif self.isNotPushing == 1:
+                rospy.set_param(
+                    "/move_base/DWAPlannerROS/yaw_goal_tolerance", 2*math.pi)
+                rospy.set_param(
+                    "/move_base/DWAPlannerROS/latch_xy_goal_tolerance", True)
 
+                quaternion = quaternion_from_euler(0, 0, 0)
+
+                goal = MoveBaseGoal()
+                goal.target_pose.header.frame_id = "base_link"
+                goal.target_pose.pose.position.x = abs(
+                    CURRENT_POSE.position.y - END_GOAL.target_pose.pose.position.y) - 0.1  # TODO: adjust this value
+                goal.target_pose.pose.position.y = 0
+                goal.target_pose.pose.orientation.x = quaternion[0]
+                goal.target_pose.pose.orientation.y = quaternion[1]
+                goal.target_pose.pose.orientation.z = quaternion[2]
+                goal.target_pose.pose.orientation.w = quaternion[3]
+
+                self.move_base_client.send_goal_and_wait(goal)
+                rospy.set_param(
+                    "/move_base/DWAPlannerROS/yaw_goal_tolerance", 0.3)
+                rospy.set_param(
+                    "/move_base/DWAPlannerROS/latch_xy_goal_tolerance", False)
+            elif self.isNotPushing == 2:
+                rospy.set_param(
+                    "/move_base/DWAPlannerROS/yaw_goal_tolerance", 2*math.pi)
+                rospy.set_param(
+                    "/move_base/DWAPlannerROS/latch_xy_goal_tolerance", True)
+
+                quaternion = quaternion_from_euler(0, 0, 0)
+
+                goal = MoveBaseGoal()
+                goal.target_pose.header.frame_id = "base_link"
+                goal.target_pose.pose.position.x = abs(
+                    CURRENT_POSE.position.x - END_GOAL.target_pose.pose.position.x) - 0.2  # TODO: adjust this value
+                goal.target_pose.pose.position.y = 0
+                goal.target_pose.pose.orientation.x = quaternion[0]
+                goal.target_pose.pose.orientation.y = quaternion[1]
+                goal.target_pose.pose.orientation.z = quaternion[2]
+                goal.target_pose.pose.orientation.w = quaternion[3]
+
+                self.move_base_client.send_goal_and_wait(goal)
+                rospy.set_param(
+                    "/move_base/DWAPlannerROS/yaw_goal_tolerance", 0.3)
+                rospy.set_param(
+                    "/move_base/DWAPlannerROS/latch_xy_goal_tolerance", False)
             return "done"
+
+
+class StopInFront(State):
+    def __init__(self, distance=-0.2):
+        State.__init__(self,  outcomes=["done"])
+        self.marker_sub = rospy.Subscriber(
+            'ar_pose_marker_base', AlvarMarkers, self.marker_callback_base)
+        self.tag_pose_base = None
+        self.distance = distance
+        self.listener = tf.TransformListener()
+        self.move_base_client = actionlib.SimpleActionClient(
+            "move_base", MoveBaseAction)
+
+    def execute(self, userdata):
+        global POINT_BEHIND_TRANS, isToTheLeft
+
+        self.tag_pose_base = None
+        while self.tag_pose_base == None:
+            continue
+
+        point = PointStamped()
+        point.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
+        point.header.stamp = rospy.Time(0)
+        point.point.z = self.distance  # TODO: maybe change it
+
+        self.listener.waitForTransform(
+            "odom", point.header.frame_id, rospy.Time(0), rospy.Duration(4))
+
+        point_transformed = self.listener.transformPoint(
+            "odom", point)
+
+        quaternion = quaternion_from_euler(0, 0, 0)
+        goal = MoveBaseGoal()
+        goal.target_pose.header.frame_id = "odom"
+        goal.target_pose.pose.position.x = point_transformed.point.x
+        goal.target_pose.pose.position.y = point_transformed.point.y
+        goal.target_pose.pose.position.z = point_transformed.point.z
+        goal.target_pose.pose.orientation.x = quaternion[0]
+        goal.target_pose.pose.orientation.y = quaternion[1]
+        goal.target_pose.pose.orientation.z = quaternion[2]
+        goal.target_pose.pose.orientation.w = quaternion[3]
+
+        self.move_base_client.send_goal_and_wait(goal)
+
+        # calculate point behind
+        if isToTheLeft:
+            delta_x = -1
+        else:
+            delta_x = 1
+
+        point_behind = PointStamped()
+        point_behind.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
+        point_behind.header.stamp = rospy.Time(0)
+        point_behind.point.z = -0.2
+        point_behind.point.x = delta_x
+
+        self.listener.waitForTransform(
+            "odom", point.header.frame_id, rospy.Time(0), rospy.Duration(4))
+
+        POINT_BEHIND_TRANS = self.listener.transformPoint(
+            "odom", point_behind)
+
+        return "done"
+
+    def marker_callback_base(self, msg):
+        if msg.markers:
+            self.tag_pose_base = msg.markers[0].pose.pose
 
 
 class MoveCloser(State):
@@ -311,6 +501,62 @@ class MoveCloser(State):
                     self.tag_pose_base = marker.pose.pose
 
 
+class MoveToSide(State):
+    def __init__(self):
+        State.__init__(self, outcomes=["done"])
+        self.listener = tf.TransformListener()
+        self.move_base_client = actionlib.SimpleActionClient(
+            "move_base", MoveBaseAction)
+
+    def execute(self, userdata):
+        global END_GOAL, TAG_POSE, TAGS_FOUND, isToTheLeft
+
+        # compare if the tag is to the left of the end go pose
+
+        # convert TAG to odom
+        tag_point = PointStamped()
+        tag_point.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
+        tag_point.header.stamp = rospy.Time(0)
+
+        self.listener.waitForTransform(
+            "odom", tag_point.header.frame_id, rospy.Time(0), rospy.Duration(4))
+
+        tag_point_transformed = self.listener.transformPoint("odom", tag_point)
+
+        isToTheLeft = tag_point_transformed.point.y > END_GOAL.target_pose.pose.position.y
+
+        if isToTheLeft:
+            delta_x = 1.5
+            angle = -math.pi/2
+        else:
+            delta_x = -1.5
+            angle = math.pi/2
+
+        side_point = PointStamped()
+        side_point.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
+        side_point.header.stamp = rospy.Time(0)
+        side_point.point.x = delta_x
+        side_point.point.z = -0.15
+
+        side_point_transformed = self.listener.transformPoint(
+            "odom", side_point)
+
+        quaternion = quaternion_from_euler(0, 0, angle)
+        goal = MoveBaseGoal()
+        goal.target_pose.header.frame_id = "odom"
+        goal.target_pose.pose.position.x = side_point_transformed.point.x
+        goal.target_pose.pose.position.y = side_point_transformed.point.y
+        goal.target_pose.pose.position.z = side_point_transformed.point.z
+        goal.target_pose.pose.orientation.x = quaternion[0]
+        goal.target_pose.pose.orientation.y = quaternion[1]
+        goal.target_pose.pose.orientation.z = quaternion[2]
+        goal.target_pose.pose.orientation.w = quaternion[3]
+
+        self.move_base_client.send_goal_and_wait(goal)
+
+        return "done"
+
+
 def odom_callback(msg):
     global CURRENT_POSE, START_POSE
 
@@ -333,7 +579,7 @@ if __name__ == "__main__":
     with sm:
 
         StateMachine.add("GoToMiddle", MoveBaseGo(
-            1.5, -1, 0, "base_link"), transitions={"done": "Turn"})
+            1.5, -0.8, 0, "base_link"), transitions={"done": "Turn"})
 
         StateMachine.add("Turn", Turn(90), transitions={"done": "FindAR"})
 
@@ -341,21 +587,49 @@ if __name__ == "__main__":
                          transitions={"find": "GetCloseToAR"})
 
         StateMachine.add("GetCloseToAR", MoveCloser(), transitions={
-                         "close_enough": "GoToBackwardMiddle"})
+                         "close_enough": "SeanTurnSaveMe"})
 
-        StateMachine.add("GoToBackwardMiddle", MoveBaseGo(-1, 0, -math.pi/2, "base_link"),
+        StateMachine.add("SeanTurnSaveMe", Turn(0), transitions={
+                         "done": "GoToBackwardMiddle"})
+
+        StateMachine.add("GoToBackwardMiddle", MoveBaseGo(-0.3, 0, -math.pi/2, "base_link"),
                          transitions={"done": "FindBox"})
 
         StateMachine.add("FindBox", TurnAndFind(), transitions={
-                         "find": "MoveBehind"})
+                         "find": "MoveToSide"})
 
-        # StateMachine.add("GetCloseToBox", MoveCloser(False),
-        #                  transitions={"close_enough": "GoToSide"})
+        StateMachine.add("MoveToSide", MoveToSide(),
+                         transitions={"done": "StopInFront"})
 
-        # StateMachine.add("GoToSide", , transitions={"done": "MoveBehind"})
+        StateMachine.add("StopInFront", StopInFront(-0.2),
+                         transitions={"done": "SeanTurnSide"})
+
+        StateMachine.add("SeanTurnSide", Turn(
+            999), transitions={"done": "Straight"})
+
+        StateMachine.add("Straight", MoveBaseGo(
+            0, 0, 0, "base_link", 1), transitions={"done": "MoveBack"})
+
+        StateMachine.add("MoveBack", Translate(-2),
+                         transitions={"done": "SeanTurn180"})
+
+        StateMachine.add("SeanTurn180", Turn(
+            180), transitions={"done": "MoveBehind"}),
 
         StateMachine.add("MoveBehind", MoveBehind(),
-                         transitions={"done": "success"})
+                         transitions={"done": "SeanTurn0_1"})
+
+        StateMachine.add("SeanTurn0_1", Turn(
+            0), transitions={"done": "StopInFront2"})
+
+        StateMachine.add("StopInFront2", StopInFront(-0.2),
+                         transitions={"done": "SeanTurn0"})
+
+        StateMachine.add("SeanTurn0", Turn(
+            0), transitions={"done": "Straight2"})
+
+        StateMachine.add("Straight2", MoveBaseGo(
+            0, 0, 0, "base_link", 2), transitions={"done": "success"})
 
         # StateMachine.add("TouchBox", , transitions={"done": "GoToGoal"})
 
