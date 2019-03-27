@@ -253,6 +253,8 @@ class MoveCloser(State):
             elif self.tag_pose_base is not None and self.tag_pose_base.position.x > 0.5:
                 move_cmd = Twist()
 
+                print self.tag_pose_base.position
+
                 if self.tag_pose_base.position.z > 0.6:  # goal too far
                     move_cmd.linear.x += 0.1
                 elif self.tag_pose_base.position.z > 0.5:  # goal too close
