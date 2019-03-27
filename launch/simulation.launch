@@ -1,0 +1,117 @@
+<launch>
+    <arg name="package" default="demo5"/>
+    <arg name="world_file"  default="$(find demo5)/simulation/course_demo5.world"/>
+    <arg name="x" default="3.799631"/>
+    <arg name="y" default="3.320490"/>
+    <arg name="z" default="0.0"/>
+    <arg name="yaw" default="0"/>
+    <arg name="gui" default="true"/>
+
+    <arg name="marker_size" default="19.9" />
+	<arg name="max_new_marker_error" default="0.08"/>
+	<arg name="max_track_error" default="0.2"/>
+    <arg name="odom_topic" default="odom"/>
+    <arg name="laser_topic" default="scan"/>
+	<arg name="cam_image_topic" default="/camera/rgb/image_raw"/>
+	<arg name="cam_info_topic" default="/camera/rgb/camera_info"/>
+	<arg name="output_frame" default="/base_link" />
+
+    <include file="$(find turtlebot_navigation)/launch/includes/velocity_smoother.launch.xml"/>
+    <include file="$(find turtlebot_navigation)/launch/includes/safety_controller.launch.xml"/>
+
+    <node name="ar_track_alvar_base" pkg="ar_track_alvar" type="individualMarkersNoKinect" respawn="false" output="screen">
+		<param name="marker_size"           type="double" value="$(arg marker_size)" />
+		<param name="max_new_marker_error"  type="double" value="$(arg max_new_marker_error)" />
+		<param name="max_track_error"       type="double" value="$(arg max_track_error)" />
+		<param name="output_frame"          type="string" value="base_link" />
+
+		<remap from="camera_image"  to="$(arg cam_image_topic)" />
+		<remap from="camera_info"   to="$(arg cam_info_topic)" />
+        <remap from="visualization_marker" to="visualization_marker_base"/>
+        <remap from="ar_pose_marker" to="ar_pose_marker_base"/>
+	</node>
+
+    <include file="$(find demo5)/launch/misc/amcl.launch.xml">
+        <arg name="scan_topic" value="scan"/>
+        <arg name="use_map_topic" value="true"/>
+        <arg name="initial_pose_x" value="$(arg x)"/>
+        <arg name="initial_pose_y" value="$(arg y)"/>
+        <arg name="initial_pose_a" value="$(arg yaw)"/>
+    </include>
+    
+    <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization2" clear_params="true">
+        <param name="frequency" value="10"/>
+        <param name="sensor_timeout" value="0.5"/>
+        <param name="two_d_mode" value="true"/>
+        <param name="odom_frame" value="odom"/>
+        <param name="base_link_frame" value="base_footprint"/>
+        <param name="world_frame" value="odom"/>
+        <param name="transform_time_offset" value="0.0"/>
+
+        <param name="odom0" value="odom"/>
+        <param name="imu0" value="/mobile_base/sensors/imu_data"/>
+
+        <rosparam param="odom0_config">
+            [
+                false,  false,  false,
+                false,  false,  false,
+                true,   true,   false,
+                false,  false,  true,
+                false,  false,  false
+            ]
+        </rosparam>
+
+        <rosparam param="imu0_config">
+            [
+                false,  false,  false,
+                false,  false,  true,
+                false,  false,  false,
+                false,  false,  true,
+                false,  false,  false
+            ]
+        </rosparam>
+
+        <param name="odom0_differential" value="false"/>
+        <param name="print_diagnostics" value="true"/>
+        <param name="debug" value="false"/>
+        <param name="debug_out_file" value="debug_ekf_localization.txt"/>
+    </node>
+
+    <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+        <rosparam file="$(find demo5)/param/odom_nav_params/costmap_common_params.yaml" command="load" ns="global_costmap" />
+        <rosparam file="$(find demo5)/param/odom_nav_params/costmap_common_params.yaml" command="load" ns="local_costmap" />
+
+        <rosparam file="$(find demo5)/param/odom_nav_params/global_costmap_params.yaml" command="load" />
+        <rosparam file="$(find demo5)/param/odom_nav_params/local_costmap_params.yaml" command="load" />
+
+        <!-- <rosparam file="$(find turtlebot_navigation)/param/odom_nav_params/base_local_planner_params.yaml" command="load" /> -->
+        <rosparam file="$(find demo5)/param/odom_nav_params/dwa_local_planner_params.yaml" command="load" />
+        <rosparam file="$(find demo5)/param/odom_nav_params/move_base_params.yaml" command="load" />
+
+        <param name="base_global_planner" type="string" value="navfn/NavfnROS" />
+        <!-- <param name="base_local_planner" value="base_local_planner/TrajectoryPlannerROS"/> -->
+        <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
+
+
+        <remap from="cmd_vel" to="navigation_velocity_smoother/raw_cmd_vel"/>
+        <remap from="odom" to="$(arg odom_topic)"/>
+        <remap from="scan" to="$(arg laser_topic)"/>
+	</node>
+    
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find demo5)/simulation/world.rviz"/>
+    <node pkg="demo5" type="main.py" name="demo5" output="screen">
+        <remap from="cmd_vel" to="navigation_velocity_smoother/raw_cmd_vel"/>
+    </node>
+
+    <node pkg="smach_viewer" type="smach_viewer.py" name="smach" />
+
+    <include file="$(find demo5)/launch/misc/single_turtlebot_gazebo.launch" >
+        <arg name="x" value="$(arg x)"/>
+        <arg name="y" value="$(arg y)"/>
+        <arg name="z" value="$(arg z)"/>
+        <arg name="yaw" value="$(arg yaw)"/>
+        <arg name="gui" value="$(arg gui)"/>
+        <arg name="world_file" value="$(arg world_file)"/>
+        <arg name="package" value="$(arg package)"/>
+    </include>
+</launch>

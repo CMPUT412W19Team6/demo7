@@ -1,0 +1,36 @@
+<launch>
+  <arg name="base"      value="$(optenv TURTLEBOT_BASE kobuki)"/> <!-- create, roomba -->
+  <arg name="battery"   value="$(optenv TURTLEBOT_BATTERY /proc/acpi/battery/BAT0)"/>  <!-- /proc/acpi/battery/BAT0 --> 
+  <arg name="stacks"    value="$(optenv TURTLEBOT_STACKS hexagons)"/>  <!-- circles, hexagons --> 
+  <arg name="3d_sensor" value="$(optenv TURTLEBOT_3D_SENSOR kinect)"/>  <!-- kinect, asus_xtion_pro --> 
+
+  <arg name="package"           default=""/>
+  <arg name="world_file"        default="$(env TURTLEBOT_GAZEBO_WORLD_FILE)"/>
+  <arg name="gui"               default="true"/>
+  <arg name="x"                 default="0"/>
+  <arg name="y"                 default="0"/>
+  <arg name="z"                 default="0"/>
+  <arg name="roll"              default="0"/>
+  <arg name="pitch"             default="0"/>
+  <arg name="yaw"               default="0"/>
+  <arg name="gazebo_tf_prefix"  default=""/>
+
+  <include file="$(eval find(arg('package')) + '/launch/misc/empty_world.launch')">
+    <arg name="use_sim_time" value="true"/>
+    <arg name="debug" value="false"/>
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="world_name" value="$(arg world_file)"/>
+    <arg name="tf_prefix" value="$(arg gazebo_tf_prefix)"/>
+  </include>
+
+ 
+  <include file="$(eval find(arg('package')) + '/launch/misc/spawn_turtlebot.launch')" >
+    <arg name="x" value="$(arg x)"/>
+    <arg name="y" value="$(arg y)"/>
+    <arg name="z" value="$(arg z)"/>
+    <arg name="roll" value="$(arg roll)"/>
+    <arg name="pitch" value="$(arg pitch)"/>
+    <arg name="yaw" value="$(arg yaw)"/>
+    <arg name="package" value="$(arg package)"/>
+  </include>
+</launch>
