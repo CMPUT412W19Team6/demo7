@@ -563,7 +563,7 @@ class MoveCloser(State):
         pose.point.z = self.distance_from_marker
 
         # TODO: Change to -0.1?????
-        pose.point.x = 0.1
+        pose.point.x = -0.1
 
         self.listener.waitForTransform(
             "odom", pose.header.frame_id, rospy.Time(0), rospy.Duration(4))
