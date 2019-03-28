@@ -113,8 +113,8 @@ class Turn(State):
 
             # slow down turning as we get closer to the target heading
             if cur < 0.1:
-                speed = 0.15
-            if cur < 0.0571:
+                speed = 0.1
+            if cur < 0.0174533:
                 break
             msg = Twist()
             msg.linear.x = 0.0
@@ -490,7 +490,7 @@ class StopInFront(State):
         return "done"
 
     def marker_callback_base(self, msg):
-        if msg.markers:
+        if msg.markers and msg.markers[0].id != 0:
             self.tag_pose_base = msg.markers[0].pose.pose
 
 
@@ -621,8 +621,7 @@ class MoveToSide(State):
         side_point.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
         side_point.header.stamp = rospy.Time(0)
         side_point.point.x = delta_x
-        side_point.point.z = -0.15
-
+        side_point.point.z = -0.25
         side_point_transformed = self.listener.transformPoint(
             "odom", side_point)
 
