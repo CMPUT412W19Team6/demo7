@@ -89,9 +89,9 @@ class Turn(State):
 
         elif self.angle == 999:
             if isToTheLeft:
-                goal = start_pose[1] + np.pi/2 * turn_direction
-            else:
                 goal = start_pose[1] - np.pi/2 * turn_direction
+            else:
+                goal = start_pose[1] + np.pi/2 * turn_direction
 
         goal = angles_lib.normalize_angle(goal)
 
@@ -166,7 +166,7 @@ class TurnAndFind(State):
             self.count += 1
 
             # if msg.id not in TAGS_FOUND:
-            if self.count > 1:
+            if self.count > 2:
                 TAGS_FOUND.append(msg.id)
                 TAG_POSE = msg.pose.pose
                 self.marker_detected = True
@@ -605,7 +605,7 @@ if __name__ == "__main__":
         StateMachine.add("MoveToSide", MoveToSide(),
                          transitions={"done": "StopInFront"})
 
-        StateMachine.add("StopInFront", StopInFront(-0.2),
+        StateMachine.add("StopInFront", StopInFront(0.2),
                          transitions={"done": "SeanTurnSide"})
 
         StateMachine.add("SeanTurnSide", Turn(
@@ -614,7 +614,7 @@ if __name__ == "__main__":
         StateMachine.add("Straight", MoveBaseGo(
             0, 0, 0, "base_link", 1), transitions={"done": "MoveBack"})
 
-        StateMachine.add("MoveBack", Translate(-2),
+        StateMachine.add("MoveBack", Translate(2),
                          transitions={"done": "SeanTurn180"})
 
         StateMachine.add("SeanTurn180", Turn(
