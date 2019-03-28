@@ -629,7 +629,7 @@ if __name__ == "__main__":
                          "find": "GetClose"})
 
         StateMachine.add("GetClose", MoveCloser(False, 0.7),
-                         transitions={"close_enough", "MoveToSide"})
+                         transitions={"close_enough": "MoveToSide"})
 
         StateMachine.add("MoveToSide", MoveToSide(),
                          transitions={"done": "StopInFront"})
