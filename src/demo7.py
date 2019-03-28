@@ -46,6 +46,7 @@ boxToTheLeft = False
 
 POINT_BEHIND_TRANS = None
 PARK_MARK = 0
+BOX_MARK = 0
 
 
 class Turn(State):
@@ -146,7 +147,7 @@ class TurnAndFind(State):
         self.mode = mode
 
     def execute(self, userdata):
-        global CURRENT_STATE, TAGS_FOUND, TAG_POSE, MIDDLE_POSE, CURRENT_POSE, boxToTheLeft, MIDDLE_GOAL
+        global CURRENT_STATE, TAGS_FOUND, TAG_POSE, MIDDLE_POSE, CURRENT_POSE, boxToTheLeft, MIDDLE_GOAL, BOX_MARK
         CURRENT_STATE = "turn"
         self.count = 0
 
@@ -162,7 +163,7 @@ class TurnAndFind(State):
 
         if self.mode == 1:
             MIDDLE_POSE = TAG_POSE
-
+            BOX_MARK = TAGS_FOUND[-1]
             yaw = euler_from_quaternion([CURRENT_POSE.orientation.x, CURRENT_POSE.orientation.y,
                                          CURRENT_POSE.orientation.z, CURRENT_POSE.orientation.w])[2]
 
@@ -276,7 +277,7 @@ class Translate(State):
 
         if self.mode == 1:
             self.distance = abs(
-                CURRENT_POSE.position.y - END_GOAL.target_pose.pose.position.y) - 0.15
+                CURRENT_POSE.position.y - END_GOAL.target_pose.pose.position.y) - 0.25
             self.linear = 0.2
         elif self.mode == 2:
             self.distance = abs(
@@ -424,7 +425,7 @@ class MoveBaseGo(State):
                 goal.target_pose.header.frame_id = "base_link"
                 goal.target_pose.pose.position.x = abs(
                     CURRENT_POSE.position.x - END_GOAL.target_pose.pose.position.x) - 0.3  # TODO: adjust this value
-                goal.target_pose.pose.position.y = 0
+                goal.target_pose.pose.position.y = 0  # TODO: adjust this value
                 goal.target_pose.pose.orientation.x = quaternion[0]
                 goal.target_pose.pose.orientation.y = quaternion[1]
                 goal.target_pose.pose.orientation.z = quaternion[2]
@@ -516,7 +517,7 @@ class MoveCloser(State):
 
     def execute(self, userdata):
         global CURRENT_POSE
-        global CURRENT_STATE, START_POSE, END_GOAL, MARKER_POSE
+        global CURRENT_STATE, START_POSE, END_GOAL, MARKER_POSE, PARK_MARK
         CURRENT_STATE = "move_closer"
 
         self.tag_pose_base = None
