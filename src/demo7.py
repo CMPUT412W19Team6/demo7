@@ -377,7 +377,12 @@ class StopInFront(State):
         point_transformed = self.listener.transformPoint(
             "odom", point)
 
-        quaternion = quaternion_from_euler(0, 0, 0)
+        if isToTheLeft:
+            angle = -math.pi/2
+        else:
+            angle = math.pi/2
+
+        quaternion = quaternion_from_euler(0, 0, angle)
         goal = MoveBaseGoal()
         goal.target_pose.header.frame_id = "odom"
         goal.target_pose.pose.position.x = point_transformed.point.x
