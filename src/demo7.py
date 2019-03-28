@@ -42,6 +42,7 @@ START = True
 isToTheLeft = False
 
 POINT_BEHIND_TRANS = None
+PARK_MARK = 0
 
 
 class Turn(State):
@@ -519,6 +520,7 @@ class MoveCloser(State):
             goal.target_pose.pose.position.y = pose_transformed.point.y
             goal.target_pose.pose.orientation = START_POSE.orientation
             END_GOAL = goal
+            PARK_MARK = self.current_marker
         else:
             MARKER_POSE = self.tag_pose_base
         return "close_enough"
@@ -617,18 +619,18 @@ if __name__ == "__main__":
                          transitions={"find": "GetCloseToAR"})
 
         StateMachine.add("GetCloseToAR", MoveCloser(), transitions={
-                         "close_enough": "SeanTurnSaveMe"})
+                         "close_enough": "GoToBackwardMiddle"})
 
-        StateMachine.add("SeanTurnSaveMe", Turn(0), transitions={
-                         "done": "GoToBackwardMiddle"})
+        # StateMachine.add("SeanTurnSaveMe", Turn(0), transitions={
+        #                  "done": "GoToBackwardMiddle"})
 
-        StateMachine.add("GoToBackwardMiddle", MoveBaseGo(-0.3, 0, -math.pi/2, "base_link"),
+        StateMachine.add("GoToBackwardMiddle", MoveBaseGo(-1, 0, -math.pi/2, "base_link"),
                          transitions={"done": "FindBox"})
 
         StateMachine.add("FindBox", TurnAndFind(), transitions={
                          "find": "GetClose"})
 
-        StateMachine.add("GetClose", MoveCloser(False, 0.7),
+        StateMachine.add("GetClose", MoveCloser(False, 1),
                          transitions={"close_enough": "MoveToSide"})
 
         StateMachine.add("MoveToSide", MoveToSide(),
