@@ -162,9 +162,9 @@ class TurnAndFind(State):
 
             yaw = euler_from_quaternion([CURRENT_POSE.orientation.x, CURRENT_POSE.orientation.y, CURRENT_POSE.orientation.z, CURRENT_POSE.orientation.w])[2]
 
-            if -180 < yaw < -90:
+            if -180 < yaw < 0:
                 boxToTheLeft = True
-            elif 90 < yaw < 180:
+            elif 0 < yaw < 180:
                 boxToTheLeft = False
 
         self.marker_detected = False
@@ -333,7 +333,7 @@ class MoveBaseGo(State):
         self.listener = tf.TransformListener()
 
     def execute(self, userdata):
-        global CURRENT_POSE, START, END_GOAL, isToTheLeft, MIDDLE_POSE
+        global CURRENT_POSE, START, END_GOAL, isToTheLeft, MIDDLE_POSE, boxToTheLeft
 
         if START and not rospy.is_shutdown():
 
