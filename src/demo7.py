@@ -299,7 +299,7 @@ class Translate(State):
                     point_behind.header.frame_id = "ar_marker_" + \
                         str(TAGS_FOUND[-1])
                     point_behind.header.stamp = rospy.Time(0)
-                    point_behind.point.z = -0.2
+                    point_behind.point.z = -0.35
                     point_behind.point.x = delta_x
 
                     self.listener.waitForTransform(
@@ -621,7 +621,7 @@ class MoveToSide(State):
         side_point.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
         side_point.header.stamp = rospy.Time(0)
         side_point.point.x = delta_x
-        side_point.point.z = -0.25
+        side_point.point.z = -.35
         side_point_transformed = self.listener.transformPoint(
             "odom", side_point)
 
@@ -693,18 +693,20 @@ if __name__ == "__main__":
                          transitions={"close_enough": "MoveToSide"})
 
         StateMachine.add("MoveToSide", MoveToSide(),
-                         transitions={"done": "StopInFront"})
+                         transitions={"done": "SeanTurnSide"})
+        StateMachine.add("SeanTurnSide", Turn(
+            999), transitions={"done": "StopInFront"})
 
         StateMachine.add("StopInFront", StopInFront(0.2),
-                         transitions={"done": "SeanTurnSide"})
+                         transitions={"done": "Straight"})
 
-        StateMachine.add("SeanTurnSide", Turn(
-            999), transitions={"done": "Straight"})
+        # StateMachine.add("SeanTurnSide", Turn(
+        #     999), transitions={"done": "Straight"})
 
         StateMachine.add("Straight", Translate(0, 0, 1),
                          transitions={"done": "MoveBack"})
 
-        StateMachine.add("MoveBack", Translate(1),
+        StateMachine.add("MoveBack", Translate(0.7),
                          transitions={"done": "SeanTurn180"})
 
         StateMachine.add("SeanTurn180", Turn(
