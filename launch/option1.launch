@@ -1,0 +1,117 @@
+<launch>
+    <arg name="package"                                     default="demo6"/>
+    <arg name="mapping"                                     default="false"/>
+    <arg name="joy"                                         default="true"/>
+    <arg name="keyboard"                                    default="false"/>
+
+    <arg name="rviz_navigation_configuration_file_location" default="simulation/navigation.rviz"/>
+
+    <arg name="odom_topic"                                  default="odom"/>
+    <arg name="laser_topic"                                 default="scan"/>
+    <arg name="imu_topic"                                   default="/mobile_base/sensors/imu_data"/>
+    <arg name="velocity_topic"                              default="navigation_velocity_smoother/raw_cmd_vel"/>
+    <!-- <arg name="velocity_topic"                              default="cmd_vel_mux/input/teleop"/> -->
+    <!-- <arg name="map_frame"                                   default="map"/> -->
+    <arg name="odom_frame"                                  default="odom"/>
+    <arg name="base_frame"                                  default="base_footprint"/>
+    
+	<arg name="cam_image_topic"                             default="/camera/rgb/image_raw"/>
+	<arg name="cam_info_topic"                              default="/camera/rgb/camera_info"/>
+
+	<arg name="ar_output_frame"                             default="base_link"/>
+    <arg name="marker_size"                                 default="19.9" />
+	<arg name="max_new_marker_error"                        default="0.08"/>
+	<arg name="max_track_error"                             default="0.2"/>
+
+    <arg name="rviz_navigation_configuration" value="$(eval find(arg('package')) + '/' + arg('rviz_navigation_configuration_file_location'))"/>
+
+    <include file="$(eval find(arg('package')) + '/launch/misc/minimal.launch')"/>
+    <include file="$(eval find(arg('package')) + '/launch/misc/3dsensor.launch')"/>
+
+    <include file="$(find turtlebot_navigation)/launch/includes/velocity_smoother.launch.xml"/>
+    <!-- <include file="$(find turtlebot_navigation)/launch/includes/safety_controller.launch.xml"/> -->
+
+    <include file="$(eval find(arg('package')) + '/launch/misc/logitech.launch')" if="$(eval joy)">
+        <arg name="publish_topic" value="$(arg velocity_topic)"/>
+    </include>
+    <include file="$(eval find(arg('package')) + '/launch/misc/keyboard_teleop.launch')" if="$(eval keyboard)">
+        <arg name="publish_topic" value="$(arg velocity_topic)"/>
+    </include>
+
+    <node pkg="robot_localization" type="ekf_localization_node" name="ekf_localization2" clear_params="true">
+        <param name="frequency" value="10"/>
+        <param name="sensor_timeout" value="0.5"/>
+        <param name="two_d_mode" value="true"/>
+        <param name="base_link_frame" value="base_footprint"/>
+        <param name="world_frame" value="odom"/>
+        <param name="transform_time_offset" value="0.0"/>
+        <!-- <param name="map_frame" value="$(arg map_frame)"/> -->
+        <param name="odom_frame" value="$(arg odom_frame)"/>
+        <param name="odom0" value="$(arg odom_topic)"/>
+        <param name="imu0" value="$(arg imu_topic)"/>
+
+        <rosparam param="odom0_config">
+            [
+                false,  false,  false,
+                false,  false,  false,
+                true,   true,   false,
+                false,  false,  true,
+                false,  false,  false
+            ]
+        </rosparam>
+
+        <rosparam param="imu0_config">
+            [
+                false,  false,  false,
+                false,  false,  true,
+                false,  false,  false,
+                false,  false,  true,
+                false,  false,  false
+            ]
+        </rosparam>
+
+        <param name="odom0_differential" value="false"/>
+        <param name="print_diagnostics" value="true"/>
+        <param name="debug" value="false"/>
+        <param name="debug_out_file" value="debug_ekf_localization.txt"/>
+    </node>
+
+    <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+        <rosparam file="$(eval find(arg('package')) + '/param/odom_nav_params/costmap_common_params.yaml')" command="load" ns="global_costmap"/>
+        <rosparam file="$(eval find(arg('package')) + '/param/odom_nav_params/costmap_common_params.yaml')" command="load" ns="local_costmap"/>
+
+        <rosparam file="$(eval find(arg('package')) + '/param/odom_nav_params/global_costmap_params.yaml')" command="load"/>
+        <rosparam file="$(eval find(arg('package')) + '/param/odom_nav_params/local_costmap_params.yaml')" command="load"/>
+
+        <!-- <rosparam file="$(eval find(arg('package')) + '/param/odom_nav_params/base_local_planner_params.yaml')" command="load"/> -->
+        <rosparam file="$(eval find(arg('package')) + '/param/odom_nav_params/dwa_local_planner_params.yaml')" command="load"/>
+        <rosparam file="$(eval find(arg('package')) + '/param/odom_nav_params/move_base_params.yaml')" command="load"/>
+
+        <param name="base_global_planner" type="string" value="navfn/NavfnROS"/>
+        <!-- <param name="base_local_planner" value="base_local_planner/TrajectoryPlannerROS"/> -->
+        <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS"/>
+
+        <remap from="cmd_vel" to="$(arg velocity_topic)"/>
+        <remap from="odom" to="$(arg odom_topic)"/>
+        <remap from="scan" to="$(arg laser_topic)"/>
+	</node>
+
+    <node name="ar_track_alvar_base" pkg="ar_track_alvar" type="individualMarkersNoKinect" respawn="false" output="screen">
+        <param name="marker_size"           type="double" value="$(arg marker_size)" />
+        <param name="max_new_marker_error"  type="double" value="$(arg max_new_marker_error)" />
+        <param name="max_track_error"       type="double" value="$(arg max_track_error)" />
+        <param name="output_frame"          type="string" value="$(arg ar_output_frame)" />
+
+        <remap from="camera_image" to="$(arg cam_image_topic)" />
+        <remap from="camera_info" to="$(arg cam_info_topic)" />
+        <remap from="visualization_marker" to="visualization_marker_base"/>
+        <remap from="ar_pose_marker" to="ar_pose_marker_base"/>
+    </node>
+
+    <node pkg="demo7" type="main.py" name="demo7" output="screen">
+        <remap from="cmd_vel" to="$(arg velocity_topic)"/>
+    </node>
+
+    <node pkg="smach_viewer" type="smach_viewer.py" name="smach" />
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(arg rviz_navigation_configuration)"/>
+</launch>
