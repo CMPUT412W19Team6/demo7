@@ -441,7 +441,7 @@ class StopInFront(State):
 
 
 class MoveCloser(State):
-    def __init__(self, ACAP=True):
+    def __init__(self, ACAP=True, how_close=0.5):
         State.__init__(self, outcomes=["close_enough"], input_keys=[
                        "current_marker"])
         self.rate = rospy.Rate(10)
@@ -453,6 +453,7 @@ class MoveCloser(State):
         self.tag_pose_base = None
         self.distance_from_marker = 0.2
         self.ACAP = ACAP
+        self.how_close = how_close
         self.listener = tf.TransformListener()
 
     def execute(self, userdata):
@@ -468,14 +469,14 @@ class MoveCloser(State):
         min_linear_speed = 0.0
 
         while True:
-            if self.tag_pose_base is not None and self.tag_pose_base.position.x < 0.5:
+            if self.tag_pose_base is not None and self.tag_pose_base.position.x < self.how_close:
                 break
-            elif self.tag_pose_base is not None and self.tag_pose_base.position.x > 0.5:
+            elif self.tag_pose_base is not None and self.tag_pose_base.position.x > self.how_close:
                 move_cmd = Twist()
 
-                if self.tag_pose_base.position.x > 0.6:  # goal too far
+                if self.tag_pose_base.position.x > self.how_close+0.1:  # goal too far
                     move_cmd.linear.x += 0.1
-                elif self.tag_pose_base.position.x > 0.5:  # goal too close
+                elif self.tag_pose_base.position.x > self.how_close:  # goal too close
                     move_cmd.linear.x -= 0.1
                 else:
                     move_cmd.linear.x = 0
@@ -625,7 +626,10 @@ if __name__ == "__main__":
                          transitions={"done": "FindBox"})
 
         StateMachine.add("FindBox", TurnAndFind(), transitions={
-                         "find": "MoveToSide"})
+                         "find": "GetClose"})
+
+        StateMachine.add("GetClose", MoveCloser(False, 0.7),
+                         transitions={"done", "MoveToSide"})
 
         StateMachine.add("MoveToSide", MoveToSide(),
                          transitions={"done": "StopInFront"})
