@@ -456,10 +456,12 @@ class MoveCloser(State):
         self.ACAP = ACAP
         self.how_close = how_close
         self.listener = tf.TransformListener()
+        self.move_base_client = actionlib.SimpleActionClient(
+            "move_base", MoveBaseAction)
 
     def execute(self, userdata):
         global CURRENT_POSE
-        global CURRENT_STATE, START_POSE, END_GOAL, MARKER_POSE
+        global CURRENT_STATE, START_POSE, END_GOAL, MARKER_POSE, PARK_MARK
         CURRENT_STATE = "move_closer"
 
         self.tag_pose_base = None
@@ -521,6 +523,7 @@ class MoveCloser(State):
             goal.target_pose.pose.orientation = START_POSE.orientation
             END_GOAL = goal
             PARK_MARK = self.current_marker
+            self.move_base_client.send_goal_and_wait(goal)
         else:
             MARKER_POSE = self.tag_pose_base
         return "close_enough"
@@ -619,7 +622,7 @@ if __name__ == "__main__":
                          transitions={"find": "GetCloseToAR"})
 
         StateMachine.add("GetCloseToAR", MoveCloser(), transitions={
-                         "close_enough": "GoToBackwardMiddle"})
+                         "close_enough": "success"})
 
         # StateMachine.add("SeanTurnSaveMe", Turn(0), transitions={
         #                  "done": "GoToBackwardMiddle"})
@@ -645,7 +648,7 @@ if __name__ == "__main__":
         StateMachine.add("Straight", Translate(0, 0, 1),
                          transitions={"done": "MoveBack"})
 
-        StateMachine.add("MoveBack", Translate(2),
+        StateMachine.add("MoveBack", Translate(1),
                          transitions={"done": "SeanTurn180"})
 
         StateMachine.add("SeanTurn180", Turn(
