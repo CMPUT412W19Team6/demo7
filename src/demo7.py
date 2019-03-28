@@ -72,7 +72,8 @@ class Turn(State):
         self.tb_rot = angles
 
     def execute(self, userdata):
-        global isToTheLeft
+        global isToTheLeft, CURRENT_STATE
+        CURRENT_STATE = "SeanTurn"
         turn_direction = 1
 
         start_pose = [0, 0, 0, 0]
@@ -187,7 +188,7 @@ class TurnAndFind(State):
             middle_point_transformed = self.listener.transformPoint(
                 "odom", middle_point)
 
-            quaternion = quaternion_from_euler(0, 0, math.pi)
+            quaternion = quaternion_from_euler(0, 0, -math.pi/2)
 
             goal = MoveBaseGoal()
             goal.target_pose.header.frame_id = "odom"
@@ -211,7 +212,7 @@ class TurnAndFind(State):
         global TAG_POSE, TAGS_FOUND
         global CURRENT_STATE
 
-        if CURRENT_STATE == "turn" and len(msg.markers) > 0:
+        if CURRENT_STATE == "turn" and len(msg.markers) > 0 and msg.markers[0].id != 0:
             msg = msg.markers[0]
             self.count += 1
 
