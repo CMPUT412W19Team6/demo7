@@ -36,10 +36,12 @@ CURRENT_STATE = None
 
 PUSH_GOAL = None
 END_GOAL = None
+MIDDLE_POSE = None
 MARKER_POSE = None
 START = True
 
 isToTheLeft = False
+boxToTheLeft = False
 
 POINT_BEHIND_TRANS = None
 PARK_MARK = 0
@@ -128,7 +130,7 @@ class Turn(State):
 
 
 class TurnAndFind(State):
-    def __init__(self):
+    def __init__(self, mode = 0):
         State.__init__(self, outcomes=["find"],
                        output_keys=["current_marker"])
         self.rate = rospy.Rate(10)
@@ -138,9 +140,10 @@ class TurnAndFind(State):
         self.marker_detected = False
         self.rate = rospy.Rate(30)
         self.count = 0
+        self.mode = mode
 
     def execute(self, userdata):
-        global CURRENT_STATE, TAGS_FOUND
+        global CURRENT_STATE, TAGS_FOUND, TAG_POSE, MIDDLE_POSE, CURRENT_POSE, boxToTheLeft
         CURRENT_STATE = "turn"
         self.count = 0
 
@@ -153,7 +156,19 @@ class TurnAndFind(State):
             self.rate.sleep()
 
         userdata.current_marker = TAGS_FOUND[-1]
+
+        if self.mode == 1:
+            MIDDLE_POSE = TAG_POSE
+
+            yaw = euler_from_quaternion([CURRENT_POSE.orientation.x, CURRENT_POSE.orientation.y, CURRENT_POSE.orientation.z, CURRENT_POSE.orientation.w])[2]
+
+            if -180 < yaw < -90:
+                boxToTheLeft = True
+            elif 90 < yaw < 180:
+                boxToTheLeft = False
+
         self.marker_detected = False
+        CURRENT_STATE = None
         self.cmd_pub.publish(Twist())
 
         return "find"
@@ -275,7 +290,7 @@ class MoveBehind(State):
         self.listener = tf.TransformListener()
 
     def execute(self, userdata):
-        global TAG_POSE, TAGS_FOUND, isToTheLeft, POINT_BEHIND_TRANS
+        global TAG_POSE, TAGS_FOUND, isToTheLeft, POINT_BEHIND_TRANS, boxToTheLeft
 
         # point_behind = PointStamped()
         # point_behind.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
@@ -305,7 +320,7 @@ class MoveBehind(State):
 
 
 class MoveBaseGo(State):
-    def __init__(self, distance=0, horizontal=0, yaw=0, frame="base_link", isNotPushing=0):
+    def __init__(self, distance=0, horizontal=0, yaw=0, frame="base_link", mode=0):
         State.__init__(self, outcomes=["done"])
         self.distance = distance
         self.horizontal = horizontal
@@ -314,14 +329,15 @@ class MoveBaseGo(State):
         self.move_base_client = actionlib.SimpleActionClient(
             "move_base", MoveBaseAction)
 
-        self.isNotPushing = isNotPushing
+        self.mode = mode
+        self.listener = tf.TransformListener()
 
     def execute(self, userdata):
-        global CURRENT_POSE, START, END_GOAL, isToTheLeft
+        global CURRENT_POSE, START, END_GOAL, isToTheLeft, MIDDLE_POSE
 
         if START and not rospy.is_shutdown():
 
-            if self.isNotPushing == 0:
+            if self.mode == 0:
                 quaternion = quaternion_from_euler(0, 0, self.yaw)
 
                 goal = MoveBaseGoal()
@@ -334,7 +350,7 @@ class MoveBaseGo(State):
                 goal.target_pose.pose.orientation.w = quaternion[3]
 
                 self.move_base_client.send_goal_and_wait(goal)
-            elif self.isNotPushing == 1:
+            elif self.mode == 1:
                 rospy.set_param(
                     "/move_base/DWAPlannerROS/yaw_goal_tolerance", 2*math.pi)
                 rospy.set_param(
@@ -361,7 +377,7 @@ class MoveBaseGo(State):
                     "/move_base/DWAPlannerROS/yaw_goal_tolerance", 0.3)
                 rospy.set_param(
                     "/move_base/DWAPlannerROS/latch_xy_goal_tolerance", False)
-            elif self.isNotPushing == 2:
+            elif self.mode == 2:
                 rospy.set_param(
                     "/move_base/DWAPlannerROS/yaw_goal_tolerance", 2*math.pi)
                 rospy.set_param(
@@ -374,6 +390,45 @@ class MoveBaseGo(State):
                 goal.target_pose.pose.position.x = abs(
                     CURRENT_POSE.position.x - END_GOAL.target_pose.pose.position.x) - 0.3  # TODO: adjust this value
                 goal.target_pose.pose.position.y = 0
+                goal.target_pose.pose.orientation.x = quaternion[0]
+                goal.target_pose.pose.orientation.y = quaternion[1]
+                goal.target_pose.pose.orientation.z = quaternion[2]
+                goal.target_pose.pose.orientation.w = quaternion[3]
+
+                self.move_base_client.send_goal_and_wait(goal)
+                rospy.set_param(
+                    "/move_base/DWAPlannerROS/yaw_goal_tolerance", 0.3)
+                rospy.set_param(
+                    "/move_base/DWAPlannerROS/latch_xy_goal_tolerance", False)
+            elif self.mode == -1:
+                rospy.set_param(
+                    "/move_base/DWAPlannerROS/yaw_goal_tolerance", 2*math.pi)
+                rospy.set_param(
+                    "/move_base/DWAPlannerROS/latch_xy_goal_tolerance", True)
+
+                if boxToTheLeft:
+                    delta_x = -2
+                else:
+                    delta_x = 2
+
+                middle_point = PointStamped()
+                middle_point.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
+                middle_point.header.stamp = rospy.Time(0)
+
+                middle_point.point.x = delta_x
+
+                self.listener.waitForTransform(
+                    "odom", middle_point.header.frame_id, rospy.Time(0), rospy.Duration(4))
+                middle_point_transformed = self.listener.transformPoint(
+                    "odom", middle_point)
+
+                quaternion = quaternion_from_euler(0, 0, math.pi)
+
+                goal = MoveBaseGoal()
+                goal.target_pose.header.frame_id = "odom"
+                goal.target_pose.pose.position.x = middle_point_transformed.point.x
+                goal.target_pose.pose.position.y = middle_point_transformed.point.y
+                goal.target_pose.pose.position.z = middle_point_transformed.point.z
                 goal.target_pose.pose.orientation.x = quaternion[0]
                 goal.target_pose.pose.orientation.y = quaternion[1]
                 goal.target_pose.pose.orientation.z = quaternion[2]
@@ -610,8 +665,13 @@ if __name__ == "__main__":
 
     with sm:
 
+        StateMachine.add("Turn0", Turn(-90), transitions={"done": "FindAR0"})
+
+        StateMachine.add("FindAR0", TurnAndFind(1),
+                         transitions={"find": "GoToMiddle"})
+
         StateMachine.add("GoToMiddle", MoveBaseGo(
-            1.5, -0.8, 0, "base_link"), transitions={"done": "Turn"})
+            0, 0, 0, "odom", -1), transitions={"done": "Turn"})
 
         StateMachine.add("Turn", Turn(90), transitions={"done": "FindAR"})
 
@@ -624,7 +684,7 @@ if __name__ == "__main__":
         # StateMachine.add("SeanTurnSaveMe", Turn(0), transitions={
         #                  "done": "GoToBackwardMiddle"})
 
-        StateMachine.add("GoToBackwardMiddle", MoveBaseGo(-1, 0, -math.pi/2, "base_link"),
+        StateMachine.add("GoToBackwardMiddle", MoveBaseGo(0, 0, 0, "odom"),
                          transitions={"done": "FindBox"})
 
         StateMachine.add("FindBox", TurnAndFind(), transitions={
