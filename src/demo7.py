@@ -213,7 +213,7 @@ class TurnAndFind(State):
         global TAG_POSE, TAGS_FOUND
         global CURRENT_STATE
 
-        if CURRENT_STATE == "turn" and len(msg.markers) > 0 and msg.markers[0].id != 0:
+        if CURRENT_STATE == "turn" and len(msg.markers) > 0 and msg.markers[0].id > 0 and msg.markers[0].id < 9:
             msg = msg.markers[0]
             self.count += 1
 
@@ -494,7 +494,7 @@ class StopInFront(State):
 
     def marker_callback_base(self, msg):
         global TAGS_FOUND
-        if msg.markers and msg.markers[0].id != 0:
+        if msg.markers and msg.markers[0].id > 0 and msg.markers[0].id < 9:
             print(TAGS_FOUND)
             self.tag_pose_base = msg.markers[0].pose.pose
 
@@ -585,7 +585,7 @@ class MoveCloser(State):
 
     def marker_callback_base(self, msg):
         global CURRENT_STATE, TAGS_FOUND
-        if CURRENT_STATE == "move_closer" and self.current_marker is not None and len(msg.markers) > 0 and msg.markers[0].id != 0:
+        if CURRENT_STATE == "move_closer" and self.current_marker is not None and len(msg.markers) > 0 and msg.markers[0].id > 0 and msg.markers[0].id < 9:
             print(TAGS_FOUND)
             for marker in msg.markers:
                 if marker.id == self.current_marker:
@@ -731,9 +731,19 @@ if __name__ == "__main__":
             0), transitions={"done": "Straight2"})
 
         StateMachine.add("Straight2", MoveBaseGo(
-            0, 0, 0, "base_link", 2), transitions={"done": "success"})
+            0, 0, 0, "base_link", 2), transitions={"done": "Recenter"})
 
-        # StateMachine.add("TouchBox", , transitions={"done": "GoToGoal"})
+        StateMachine.add("Recenter", Translate(1), transitions={"done": "TurnToScanPos"})
+
+        StateMachine.add("TurnToScanPos", Turn(90), transitions={"done": })
+
+        StateMachine.add("FoundNewPos", TurnAndFind(3), transitions={"done": "MoveToSide2"})
+
+        StateMachine.add("MoveToSide2", , transitions={"done": "TurnABit"})
+
+        StateMachine.add("TurnABit", , transitions={"done":"PushToEnd"})
+
+        StateMachine.add("PushToEnd", Translate(0,0,3), transitions={"done":"success"})
 
     sis = smach_ros.IntrospectionServer('server_name', sm, '/SM_ROOT')
     sis.start()
