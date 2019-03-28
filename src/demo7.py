@@ -37,6 +37,7 @@ CURRENT_STATE = None
 PUSH_GOAL = None
 END_GOAL = None
 MIDDLE_POSE = None
+MIDDLE_GOAL = None
 MARKER_POSE = None
 START = True
 
@@ -55,7 +56,7 @@ class Turn(State):
     def __init__(self, angle=90):
         State.__init__(self, outcomes=["done"])
         self.tb_position = None
-        self.tb_rot = None
+        self.tb_rot = [0, 0, 0, 0]
         # angle defines angle target relative to goal direction
         self.angle = angle
 
@@ -137,13 +138,14 @@ class TurnAndFind(State):
         self.cmd_pub = rospy.Publisher("cmd_vel", Twist, queue_size=1)
         self.marker_sub = rospy.Subscriber(
             'ar_pose_marker_base', AlvarMarkers, self.marker_callback)
+        self.listener = tf.TransformListener()
         self.marker_detected = False
         self.rate = rospy.Rate(30)
         self.count = 0
         self.mode = mode
 
     def execute(self, userdata):
-        global CURRENT_STATE, TAGS_FOUND, TAG_POSE, MIDDLE_POSE, CURRENT_POSE, boxToTheLeft
+        global CURRENT_STATE, TAGS_FOUND, TAG_POSE, MIDDLE_POSE, CURRENT_POSE, boxToTheLeft, MIDDLE_GOAL
         CURRENT_STATE = "turn"
         self.count = 0
 
@@ -168,8 +170,39 @@ class TurnAndFind(State):
             elif 0 < yaw < 180:
                 boxToTheLeft = False
 
+            if boxToTheLeft:
+                delta_x = -2
+            else:
+                delta_x = 2
+
+            middle_point = PointStamped()
+            middle_point.header.frame_id = "ar_marker_" + \
+                str(TAGS_FOUND[-1])
+            middle_point.header.stamp = rospy.Time(0)
+
+            middle_point.point.x = delta_x
+
+            self.listener.waitForTransform(
+                "odom", middle_point.header.frame_id, rospy.Time(0), rospy.Duration(4))
+            middle_point_transformed = self.listener.transformPoint(
+                "odom", middle_point)
+
+            quaternion = quaternion_from_euler(0, 0, math.pi)
+
+            goal = MoveBaseGoal()
+            goal.target_pose.header.frame_id = "odom"
+            goal.target_pose.pose.position.x = middle_point_transformed.point.x
+            goal.target_pose.pose.position.y = middle_point_transformed.point.y
+            goal.target_pose.pose.position.z = middle_point_transformed.point.z
+            goal.target_pose.pose.orientation.x = quaternion[0]
+            goal.target_pose.pose.orientation.y = quaternion[1]
+            goal.target_pose.pose.orientation.z = quaternion[2]
+            goal.target_pose.pose.orientation.w = quaternion[3]
+
+            MIDDLE_GOAL = goal
+
         self.marker_detected = False
-        CURRENT_STATE = None
+        # CURRENT_STATE = None
         self.cmd_pub.publish(Twist())
 
         return "find"
@@ -183,7 +216,7 @@ class TurnAndFind(State):
             self.count += 1
 
             # if msg.id not in TAGS_FOUND:
-            if self.count > 2:
+            if self.count > 0:
                 TAGS_FOUND.append(msg.id)
                 TAG_POSE = msg.pose.pose
                 self.marker_detected = True
@@ -331,10 +364,9 @@ class MoveBaseGo(State):
             "move_base", MoveBaseAction)
 
         self.mode = mode
-        self.listener = tf.TransformListener()
 
     def execute(self, userdata):
-        global CURRENT_POSE, START, END_GOAL, isToTheLeft, MIDDLE_POSE, boxToTheLeft
+        global CURRENT_POSE, START, END_GOAL, isToTheLeft, MIDDLE_GOAL
 
         if START and not rospy.is_shutdown():
 
@@ -402,45 +434,9 @@ class MoveBaseGo(State):
                 rospy.set_param(
                     "/move_base/DWAPlannerROS/latch_xy_goal_tolerance", False)
             elif self.mode == -1:
-                rospy.set_param(
-                    "/move_base/DWAPlannerROS/yaw_goal_tolerance", 2*math.pi)
-                rospy.set_param(
-                    "/move_base/DWAPlannerROS/latch_xy_goal_tolerance", True)
 
-                if boxToTheLeft:
-                    delta_x = -2
-                else:
-                    delta_x = 2
+                self.move_base_client.send_goal_and_wait(MIDDLE_GOAL)
 
-                middle_point = PointStamped()
-                middle_point.header.frame_id = "ar_marker_" + \
-                    str(TAGS_FOUND[-1])
-                middle_point.header.stamp = rospy.Time(0)
-
-                middle_point.point.x = delta_x
-
-                self.listener.waitForTransform(
-                    "odom", middle_point.header.frame_id, rospy.Time(0), rospy.Duration(4))
-                middle_point_transformed = self.listener.transformPoint(
-                    "odom", middle_point)
-
-                quaternion = quaternion_from_euler(0, 0, math.pi)
-
-                goal = MoveBaseGoal()
-                goal.target_pose.header.frame_id = "odom"
-                goal.target_pose.pose.position.x = middle_point_transformed.point.x
-                goal.target_pose.pose.position.y = middle_point_transformed.point.y
-                goal.target_pose.pose.position.z = middle_point_transformed.point.z
-                goal.target_pose.pose.orientation.x = quaternion[0]
-                goal.target_pose.pose.orientation.y = quaternion[1]
-                goal.target_pose.pose.orientation.z = quaternion[2]
-                goal.target_pose.pose.orientation.w = quaternion[3]
-
-                self.move_base_client.send_goal_and_wait(goal)
-                rospy.set_param(
-                    "/move_base/DWAPlannerROS/yaw_goal_tolerance", 0.3)
-                rospy.set_param(
-                    "/move_base/DWAPlannerROS/latch_xy_goal_tolerance", False)
             return "done"
 
 
@@ -670,12 +666,14 @@ if __name__ == "__main__":
         StateMachine.add("Turn0", Turn(-90), transitions={"done": "FindAR0"})
 
         StateMachine.add("FindAR0", TurnAndFind(1),
-                         transitions={"find": "GoToMiddle"})
+                         transitions={"find": "Turn"})
 
         StateMachine.add("Turn", Turn(0), transitions={"done": "GoToMiddle"})
 
         StateMachine.add("GoToMiddle", MoveBaseGo(
-            1.5, -0.8, 0, "base_link"), transitions={"done": "FindAR"})
+            1.5, -0.8, 0, "base_link"), transitions={"done": "Turn9"})
+
+        StateMachine.add("Turn9", Turn(90), transitions={"done": "FindAR"})
 
         StateMachine.add("FindAR", TurnAndFind(),
                          transitions={"find": "GetCloseToAR"})
