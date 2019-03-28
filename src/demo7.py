@@ -197,6 +197,8 @@ class Translate(State):
         self.linear = linear
         self.mode = mode
 
+        self.listener = tf.TransformListener()
+
         # pub / sub
         self.cmd_pub = rospy.Publisher(
             "cmd_vel", Twist, queue_size=1)
@@ -212,7 +214,7 @@ class Translate(State):
         global turn_direction
         global START
         global CURRENT_POSE
-        global END_GOAL
+        global END_GOAL, POINT_BEHIND_TRANS, isToTheLeft
 
         if not START:
             return 'quit'
@@ -222,11 +224,11 @@ class Translate(State):
 
         if self.mode == 1:
             self.distance = abs(
-                    CURRENT_POSE.position.y - END_GOAL.target_pose.pose.position.y) - 0.15
+                CURRENT_POSE.position.y - END_GOAL.target_pose.pose.position.y) - 0.15
             self.linear = 0.2
         elif self.mode == 2:
             self.distance = abs(
-                    CURRENT_POSE.position.x - END_GOAL.target_pose.pose.position.x) - 0.2
+                CURRENT_POSE.position.x - END_GOAL.target_pose.pose.position.x) - 0.2
             self.linear = 0.2
 
         forward_vec = calc_delta_vector(start_heading, self.distance)
@@ -236,6 +238,26 @@ class Translate(State):
             dist = check_forward_distance(
                 forward_vec, start_pos, self.tb_position)
             if dist > self.distance:
+                if self.mode == 0:
+                    if isToTheLeft:
+                        delta_x = 1
+                    else:
+                        delta_x = -1
+
+                    # calculate point behind
+                    point_behind = PointStamped()
+                    point_behind.header.frame_id = "ar_marker_" + \
+                        str(TAGS_FOUND[-1])
+                    point_behind.header.stamp = rospy.Time(0)
+                    point_behind.point.z = -0.2
+                    point_behind.point.x = delta_x
+
+                    self.listener.waitForTransform(
+                        "odom", point_behind.header.frame_id, rospy.Time(0), rospy.Duration(4))
+
+                    POINT_BEHIND_TRANS = self.listener.transformPoint(
+                        "odom", point_behind)
+
                 return "done"
 
             msg = Twist()
@@ -392,10 +414,8 @@ class StopInFront(State):
             "odom", point)
 
         if isToTheLeft:
-            delta_x = -1
             angle = -math.pi/2
         else:
-            delta_x = 1
             angle = math.pi/2
 
         quaternion = quaternion_from_euler(0, 0, angle)
@@ -408,19 +428,6 @@ class StopInFront(State):
         goal.target_pose.pose.orientation.y = quaternion[1]
         goal.target_pose.pose.orientation.z = quaternion[2]
         goal.target_pose.pose.orientation.w = quaternion[3]
-
-        # calculate point behind
-        point_behind = PointStamped()
-        point_behind.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
-        point_behind.header.stamp = rospy.Time(0)
-        point_behind.point.z = -0.2
-        point_behind.point.x = delta_x
-
-        self.listener.waitForTransform(
-            "odom", point.header.frame_id, rospy.Time(0), rospy.Duration(4))
-
-        POINT_BEHIND_TRANS = self.listener.transformPoint(
-            "odom", point_behind)
 
         self.move_base_client.send_goal_and_wait(goal)
 
@@ -627,7 +634,8 @@ if __name__ == "__main__":
         StateMachine.add("SeanTurnSide", Turn(
             999), transitions={"done": "Straight"})
 
-        StateMachine.add("Straight", Translate(0, 0, 1), transitions={"done": "MoveBack"})
+        StateMachine.add("Straight", Translate(0, 0, 1),
+                         transitions={"done": "MoveBack"})
 
         StateMachine.add("MoveBack", Translate(2),
                          transitions={"done": "SeanTurn180"})
