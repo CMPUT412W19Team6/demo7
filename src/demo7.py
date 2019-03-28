@@ -372,7 +372,7 @@ class MoveBaseGo(State):
                 goal = MoveBaseGoal()
                 goal.target_pose.header.frame_id = "base_link"
                 goal.target_pose.pose.position.x = abs(
-                    CURRENT_POSE.position.x - END_GOAL.target_pose.pose.position.x) - 0.2  # TODO: adjust this value
+                    CURRENT_POSE.position.x - END_GOAL.target_pose.pose.position.x) - 0.3  # TODO: adjust this value
                 goal.target_pose.pose.position.y = 0
                 goal.target_pose.pose.orientation.x = quaternion[0]
                 goal.target_pose.pose.orientation.y = quaternion[1]
