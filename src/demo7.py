@@ -378,8 +378,10 @@ class StopInFront(State):
             "odom", point)
 
         if isToTheLeft:
+            delta_x = -1
             angle = -math.pi/2
         else:
+            delta_x = 1
             angle = math.pi/2
 
         quaternion = quaternion_from_euler(0, 0, angle)
@@ -393,14 +395,7 @@ class StopInFront(State):
         goal.target_pose.pose.orientation.z = quaternion[2]
         goal.target_pose.pose.orientation.w = quaternion[3]
 
-        self.move_base_client.send_goal_and_wait(goal)
-
         # calculate point behind
-        if isToTheLeft:
-            delta_x = -1
-        else:
-            delta_x = 1
-
         point_behind = PointStamped()
         point_behind.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
         point_behind.header.stamp = rospy.Time(0)
@@ -412,6 +407,8 @@ class StopInFront(State):
 
         POINT_BEHIND_TRANS = self.listener.transformPoint(
             "odom", point_behind)
+
+        self.move_base_client.send_goal_and_wait(goal)
 
         return "done"
 
