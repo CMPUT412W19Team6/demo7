@@ -278,7 +278,7 @@ class MoveBaseGo(State):
         self.isNotPushing = isNotPushing
 
     def execute(self, userdata):
-        global CURRENT_POSE, START, END_GOAL
+        global CURRENT_POSE, START, END_GOAL, isToTheLeft
 
         if START and not rospy.is_shutdown():
 
@@ -301,7 +301,11 @@ class MoveBaseGo(State):
                 rospy.set_param(
                     "/move_base/DWAPlannerROS/latch_xy_goal_tolerance", True)
 
-                quaternion = quaternion_from_euler(0, 0, 0)
+                if isToTheLeft:
+                    angle = -math.pi/2
+                else:
+                    angle = math.pi/2
+                quaternion = quaternion_from_euler(0, 0, angle)
 
                 goal = MoveBaseGoal()
                 goal.target_pose.header.frame_id = "base_link"
