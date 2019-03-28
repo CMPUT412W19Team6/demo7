@@ -94,9 +94,9 @@ class Turn(State):
 
         elif self.angle == 999:
             if isToTheLeft:
-                goal = start_pose[1] - np.pi/2 * turn_direction
+                goal = start_pose[1] - 85*np.pi/180 * turn_direction
             else:
-                goal = start_pose[1] + np.pi/2 * turn_direction
+                goal = start_pose[1] + 85*np.pi/180 * turn_direction
 
         goal = angles_lib.normalize_angle(goal)
 
@@ -292,9 +292,9 @@ class Translate(State):
             if dist > self.distance:
                 if self.mode == 0:
                     if isToTheLeft:
-                        delta_x = 1
+                        delta_x = 1.5
                     else:
-                        delta_x = -1
+                        delta_x = -1.5
 
                     # calculate point behind
                     point_behind = PointStamped()
@@ -698,15 +698,15 @@ if __name__ == "__main__":
                          transitions={"close_enough": "MoveToSide"})
 
         StateMachine.add("MoveToSide", MoveToSide(),
-                         transitions={"done": "SeanTurnSide"})
-        StateMachine.add("SeanTurnSide", Turn(
-            999), transitions={"done": "StopInFront"})
+                         transitions={"done": "StopInFront"})
+        # StateMachine.add("SeanTurnSide", Turn(
+        #     999), transitions={"done": "StopInFront"})
 
         StateMachine.add("StopInFront", StopInFront(0.2),
-                         transitions={"done": "Straight"})
+                         transitions={"done": "SeanTurnSide"})
 
-        # StateMachine.add("SeanTurnSide", Turn(
-        #     999), transitions={"done": "Straight"})
+        StateMachine.add("SeanTurnSide", Turn(
+            999), transitions={"done": "Straight"})
 
         StateMachine.add("Straight", Translate(0, 0, 1),
                          transitions={"done": "MoveBack"})
