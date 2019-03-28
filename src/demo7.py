@@ -300,6 +300,8 @@ class MoveBehind(State):
 
         self.move_base_client.send_goal_and_wait(goal)
 
+        return "done"
+
 
 class MoveBaseGo(State):
     def __init__(self, distance=0, horizontal=0, yaw=0, frame="base_link", isNotPushing=0):
