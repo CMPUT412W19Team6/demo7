@@ -188,13 +188,14 @@ def check_forward_distance(forward_vec, start_pos, current_pos):
 
 
 class Translate(State):
-    def __init__(self, distance=0.15, linear=-0.2):
+    def __init__(self, distance=0.15, linear=-0.2, mode=0):
         State.__init__(self, outcomes=["done"])
         self.tb_position = None
         self.tb_rot = [0, 0, 0, 0]
         self.distance = distance
         self.COLLISION = False
         self.linear = linear
+        self.mode = mode
 
         # pub / sub
         self.cmd_pub = rospy.Publisher(
@@ -210,11 +211,24 @@ class Translate(State):
     def execute(self, userdata):
         global turn_direction
         global START
+        global CURRENT_POSE
+        global END_GOAL
+
         if not START:
             return 'quit'
         self.COLLISION = False
         start_heading = self.tb_rot[2]
         start_pos = self.tb_position
+
+        if self.mode == 1:
+            self.distance = abs(
+                    CURRENT_POSE.position.y - END_GOAL.target_pose.pose.position.y) - 0.15
+            self.linear = 0.2
+        elif self.mode == 2:
+            self.distance = abs(
+                    CURRENT_POSE.position.x - END_GOAL.target_pose.pose.position.x) - 0.2
+            self.linear = 0.2
+
         forward_vec = calc_delta_vector(start_heading, self.distance)
         rate = rospy.Rate(30)
 
@@ -310,7 +324,7 @@ class MoveBaseGo(State):
                 goal = MoveBaseGoal()
                 goal.target_pose.header.frame_id = "base_link"
                 goal.target_pose.pose.position.x = abs(
-                    CURRENT_POSE.position.y - END_GOAL.target_pose.pose.position.y) - 0.1  # TODO: adjust this value
+                    CURRENT_POSE.position.y - END_GOAL.target_pose.pose.position.y) - 0.15  # TODO: adjust this value
                 goal.target_pose.pose.position.y = 0
                 goal.target_pose.pose.orientation.x = quaternion[0]
                 goal.target_pose.pose.orientation.y = quaternion[1]
@@ -613,8 +627,7 @@ if __name__ == "__main__":
         StateMachine.add("SeanTurnSide", Turn(
             999), transitions={"done": "Straight"})
 
-        StateMachine.add("Straight", MoveBaseGo(
-            0, 0, 0, "base_link", 1), transitions={"done": "MoveBack"})
+        StateMachine.add("Straight", Translate(0, 0, 1), transitions={"done": "MoveBack"})
 
         StateMachine.add("MoveBack", Translate(2),
                          transitions={"done": "SeanTurn180"})
