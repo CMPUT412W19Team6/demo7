@@ -220,6 +220,7 @@ class TurnAndFind(State):
             if self.count > 0:
                 TAGS_FOUND.append(msg.id)
                 TAG_POSE = msg.pose.pose
+                print(TAGS_FOUND)
                 self.marker_detected = True
 
 
@@ -491,7 +492,9 @@ class StopInFront(State):
         return "done"
 
     def marker_callback_base(self, msg):
+        global TAGS_FOUND
         if msg.markers and msg.markers[0].id != 0:
+            print(TAGS_FOUND)
             self.tag_pose_base = msg.markers[0].pose.pose
 
 
@@ -580,8 +583,9 @@ class MoveCloser(State):
         return "close_enough"
 
     def marker_callback_base(self, msg):
-        global CURRENT_STATE
-        if CURRENT_STATE == "move_closer" and self.current_marker is not None:
+        global CURRENT_STATE, TAGS_FOUND
+        if CURRENT_STATE == "move_closer" and self.current_marker is not None and len(msg.markers) > 0 and msg.markers[0].id != 0:
+            print(TAGS_FOUND)
             for marker in msg.markers:
                 if marker.id == self.current_marker:
                     self.tag_pose_base = marker.pose.pose
