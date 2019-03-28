@@ -130,7 +130,7 @@ class Turn(State):
 
 
 class TurnAndFind(State):
-    def __init__(self, mode = 0):
+    def __init__(self, mode=0):
         State.__init__(self, outcomes=["find"],
                        output_keys=["current_marker"])
         self.rate = rospy.Rate(10)
@@ -160,7 +160,8 @@ class TurnAndFind(State):
         if self.mode == 1:
             MIDDLE_POSE = TAG_POSE
 
-            yaw = euler_from_quaternion([CURRENT_POSE.orientation.x, CURRENT_POSE.orientation.y, CURRENT_POSE.orientation.z, CURRENT_POSE.orientation.w])[2]
+            yaw = euler_from_quaternion([CURRENT_POSE.orientation.x, CURRENT_POSE.orientation.y,
+                                         CURRENT_POSE.orientation.z, CURRENT_POSE.orientation.w])[2]
 
             if -180 < yaw < 0:
                 boxToTheLeft = True
@@ -412,7 +413,8 @@ class MoveBaseGo(State):
                     delta_x = 2
 
                 middle_point = PointStamped()
-                middle_point.header.frame_id = "ar_marker_" + str(TAGS_FOUND[-1])
+                middle_point.header.frame_id = "ar_marker_" + \
+                    str(TAGS_FOUND[-1])
                 middle_point.header.stamp = rospy.Time(0)
 
                 middle_point.point.x = delta_x
@@ -670,10 +672,10 @@ if __name__ == "__main__":
         StateMachine.add("FindAR0", TurnAndFind(1),
                          transitions={"find": "GoToMiddle"})
 
-        StateMachine.add("GoToMiddle", MoveBaseGo(
-            0, 0, 0, "odom", -1), transitions={"done": "Turn"})
+        StateMachine.add("Turn", Turn(0), transitions={"done": "GoToMiddle"})
 
-        StateMachine.add("Turn", Turn(90), transitions={"done": "FindAR"})
+        StateMachine.add("GoToMiddle", MoveBaseGo(
+            1.5, -0.8, 0, "base_link"), transitions={"done": "FindAR"})
 
         StateMachine.add("FindAR", TurnAndFind(),
                          transitions={"find": "GetCloseToAR"})
@@ -684,7 +686,7 @@ if __name__ == "__main__":
         # StateMachine.add("SeanTurnSaveMe", Turn(0), transitions={
         #                  "done": "GoToBackwardMiddle"})
 
-        StateMachine.add("GoToBackwardMiddle", MoveBaseGo(0, 0, 0, "odom"),
+        StateMachine.add("GoToBackwardMiddle", MoveBaseGo(0, 0, 0, "odom", -1),
                          transitions={"done": "FindBox"})
 
         StateMachine.add("FindBox", TurnAndFind(), transitions={
